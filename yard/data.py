@@ -284,22 +284,70 @@ class BinaryClassifierData(object):
     not appear in legends.
     """
 
-    def __init__(self, data, title=None):
+    def __init__(self, data_orScores, title_orLabels=None, *args):
         self._title = None
 
-        if isinstance(data, BinaryClassifierData):
-            self.data = data.data
+        if isinstance(data_orScores, BinaryClassifierData):
+            # use the given object
+            try:
+		from numpy import array
+                self.scores = array(data_orScores.scores)
+		sort_inds = self.scores.argsort()
+                self.labels = array(data_orScores.labels)[sort_inds]
+                del sort_inds
+            except ImportError:
+                self.scores = data_orScores.scores
+                sort_inds = sorted(xrange(len(self.scores)), key=self.scores.__getitem__)
+                self.labels = [data_orScores.labels[i] for i in sort_inds]
+                del sort_inds
         else:
-            self.data = sorted(self._normalize_point(point) for point in data)
-        self.title = title
-        self.total_positives = sum(point[1] > 0 for point in data)
-        self.total_negatives = len(self.data) - self.total_positives
+            # we either have data as pairs or two separate lists
+            if ((title_orLabels is not None) and (len(data_orScores)==len(title_orLabels)) and (len(args)==0)):
+                # data as two separate lists
+                try:
+                    from numpy import array
+                    self.scores = array(data_orScores)
+		    sort_inds = self.scores.argsort()
+                    self.scores = self.scores[sort_ind]
+                    self.labels = array(title_orLabels)>0
+                    self.labels = self.labels[sort_inds]
+                    del sort_inds
+                except ImportError:
+                    self.scores = data_orScores
+                    sort_inds = sorted(xrange(len(self.scores)), key=self.scores.__getitem__)
+                    self.scores = [self.scores[i] for i in sort_inds]
+                    self.labels = [title_orLabels[i]>0 for i in sort_inds]
+                    del sort_inds
+                if len(args):
+                    self.title = args[0]
+            else:
+                # data as pairs
+                try:
+                    from numpy import array
+                    self.scores = array([x[0] for x in data_orScores])
+                    sort_inds = self.scores.argsort()
+                    self.scores = self.scores[sort_inds]
+                    self.labels = array([x[1] for x in data_orScores])>0
+                    self.labels = self.labels[sort_inds]
+                    del sort_inds
+                except ImportError:
+                    self.scores, self.labels = zip(*data_orScores)
+                    sort_inds = sorted(xrange(len(self.scores)), key=self.scores.__getitem__)
+                    self.scores = [self.scores[i] for i in sort_inds]
+                    self.labels = [data_orScores[i][1]>0 for i in sort_inds]
+                    del sort_inds
+                self.title = title_orLabels
+        try:
+            self.total_positives = self.labels.sum()
+        except AttributeError:
+            self.total_positives = sum(self.labels)
+        self.total_negatives = len(self.scores) - self.total_positives
 
     def __getitem__(self, index):
-        return tuple(self.data[index])
+        return tuple(self.scores[index],self.labels[index])
 
     def __len__(self):
-        return len(self.data)
+        return len(self.scores)
 
     @staticmethod
     def _normalize_point(point):
@@ -326,14 +374,14 @@ class BinaryClassifierData(object):
         result = [[0, 0], [0, 0]]
         # Find the index in the data where the predictions start to
         # exceed the threshold
-        idx = bisect_left(self.data, (threshold, False))
-        if idx <= len(self.data) // 2:
-            for _, is_pos in self.data[:idx]:
-                result[0][is_pos] += 1
+        idx = bisect_left(self.scores, threshold)
+        if idx <= len(self.scores) // 2:
+            for is_pos in self.labels[:idx]:
+                result[0][is_pos] += 1 # this can probably be written without an explicit loop TODO
             result[1][0] = self.total_negatives - result[0][0]
             result[1][1] = self.total_positives - result[0][1]
         else:
-            for _, is_pos in self.data[idx:]:
+            for is_pos in self.labels[idx:]:
                 result[1][is_pos] += 1
             result[0][0] = self.total_negatives - result[1][0]
             result[0][1] = self.total_positives - result[1][1]
@@ -341,17 +389,13 @@ class BinaryClassifierData(object):
 
     def get_negative_ranks(self):
         """Returns the ranks of the negative instances."""
-        observations, exps = zip(*self.data)
-        ranks = rank(observations)
-        del observations
-        return [ranks[idx] for idx, truth in enumerate(exps) if not truth]
+        ranks = rank(self.scores)
+        return [ranks[idx] for idx, truth in enumerate(self.labels) if not truth] # TODO can probably be written better with scipy
 
     def get_positive_ranks(self):
         """Returns the ranks of the positive instances."""
-        observations, exps = zip(*self.data)
-        ranks = rank(observations)
-        del observations
-        return [ranks[idx] for idx, truth in enumerate(exps) if truth]
+        ranks = rank(self.scores)
+        return [ranks[idx] for idx, truth in enumerate(self.labels) if truth]
 
     def iter_confusion_matrices(self, thresholds=None):
         """Iterates over the possible prediction thresholds in the
@@ -370,26 +414,34 @@ class BinaryClassifierData(object):
             return
 
         if thresholds is None:
-            thresholds = [pred for pred, _ in self.data]
+            try:
+                from numpy import append
+                thresholds = append(self.scores,float('inf'))
+            except ImportError:
+                import copy
+                thresholds = copy.copy(self.scores)
+                thresholds.append(float('inf'))
         elif not hasattr(thresholds, "__iter__"):
             n = float(thresholds)
             thresholds = [i/n for i in xrange(thresholds)]
-        thresholds = sorted(set(thresholds))
+        try:
+            import numpy
+            thresholds = numpy.unique(thresholds)
+        except ImportError:
+            thresholds = sorted(set(thresholds))
 
-        if not thresholds:
+        if len(thresholds)==0:
             return
-
-        thresholds.append(float('inf'))
 
         result = BinaryConfusionMatrix(tp=self.total_positives,fp=self.total_negatives,tn=0,fn=0)
 
-        row_idx, n = 0, len(self)
+        idx, n = 0, len(self)
         for threshold in thresholds:
-            while row_idx < n:
-                row = self.data[row_idx]
-                if row[0] >= threshold:
+            while idx < n:
+                score = self.scores[idx]
+                if score >= threshold:
                     break
-                if row[1]:
+                if self.labels[idx]:
                     # This data point is a positive example. Since
                     # we are below the threshold now (and we weren't
                     # in the previous iteration), we have one less
@@ -403,7 +455,7 @@ class BinaryClassifierData(object):
                     # TN and one less FP
                     result.tn += 1
                     result.fp -= 1
-                row_idx += 1
+                idx += 1
             yield threshold, BinaryConfusionMatrix(result)
     
     @property
