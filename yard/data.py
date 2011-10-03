@@ -308,7 +308,7 @@ class BinaryClassifierData(object):
                     from numpy import array
                     self.scores = array(data_orScores)
 		    sort_inds = self.scores.argsort()
-                    self.scores = self.scores[sort_ind]
+                    self.scores = self.scores[sort_inds]
                     self.labels = array(title_orLabels)>0
                     self.labels = self.labels[sort_inds]
                     del sort_inds
