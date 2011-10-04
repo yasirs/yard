@@ -342,8 +342,7 @@ class BinaryClassifierPerformanceCurve(Curve):
     def _calculate_points(self):
         """Returns the actual points of the curve as a list of tuples."""
         x_func, y_func = self.x_func, self.y_func
-        self.points = [(x_func(mat), y_func(mat)) for _, mat in \
-                self._data.iter_confusion_matrices()]
+        self.points = (x_func(self.data),y_func(self.data))
 
     @property
     def data(self):
@@ -421,8 +420,8 @@ class ROCCurve(BinaryClassifierPerformanceCurve):
         and ``True`` also means a positive example. The dataset can also
         be an instance of `BinaryClassifierData`.
         """
-        super(ROCCurve, self).__init__(data, BinaryConfusionMatrix.fpr,
-            BinaryConfusionMatrix.tpr)
+        super(ROCCurve, self).__init__(data, BinaryClassiferData.fpr,
+            BinaryClassifierData.tpr)
 
     def auc(self):
         """Constructs the area under the ROC curve by a linear transformation
@@ -510,7 +509,7 @@ class PrecisionRecallCurve(BinaryClassifierPerformanceCurve):
         be an instance of `BinaryClassifierData`.
         """
         super(PrecisionRecallCurve, self).__init__(data,
-            BinaryConfusionMatrix.recall, BinaryConfusionMatrix.precision)
+            BinaryClassifierData.recall, BinaryClassifierData.precision)
 
     @classmethod
     def get_friendly_name(cls):

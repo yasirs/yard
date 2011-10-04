@@ -341,13 +341,72 @@ class BinaryClassifierData(object):
             self.total_positives = self.labels.sum()
         except AttributeError:
             self.total_positives = sum(self.labels)
-        self.total_negatives = len(self.scores) - self.total_positives
+        self.total_points = len(self.scores)
+        self.total_negatives = self.total_points - self.total_positives
+        try:
+            from numpy import cumsum
+            self.cumulative_positives = cumsum(self.labels)
+        except ImportError:
+            def cumsum(seq):
+                s = 0
+                for n in seq:
+                    s += n
+                    yield s
+            self.cumulative_positives = list(cumsum(self.labels))
 
     def __getitem__(self, index):
         return tuple(self.scores[index],self.labels[index])
 
     def __len__(self):
         return len(self.scores)
+
+    @axis_label("True Positive Rate")
+    def tpr(self):
+        try:
+             from numpy import linspace
+             return self.cumulative_positives/linspace(1,self.total_points,self.total_points)
+        except ImportError:
+             def tprgen(seq):
+                 i = 1.0
+                 for n in seq:
+                     yield n/i
+                     i += 1
+             return list(tprgen(self.cumulative_positives))
+
+    @axis_label("False Positive Rate")
+    def fpr(self):
+        try:
+             from numpy import linspace
+             return 1 - (self.cumulative_positives)/linspace(1,self.total_points,self.total_points)
+        except ImportError:
+             def fprgen(seq):
+                 i = 1.0
+                 for n in seq:
+                     yield (i-n)/i
+                     i += 1
+             return list(fprgen(self.cumulative_positives))
+      
+    @axis_label("Precision")
+    def precision(self):
+        try:
+             from numpy import linspace
+             return self.cumulative_positives/linspace(1,self.total_points,self.total_points)
+        except ImportError:
+             def tprgen(seq):
+                 i = 1.0
+                 for n in seq:
+                     yield n/i
+                     i += 1
+             return list(tprgen(self.cumulative_positives))
+
+    @axis_label("Recall")
+    def recall(self):
+        try:
+             from numpy import linspace
+             return self.cumulative_positives/self.total_positives
+        except ImportError:
+             return list((n+0.0)/self.total_positives for n in self.cumulative_positives)
+
 
     @staticmethod
     def _normalize_point(point):
