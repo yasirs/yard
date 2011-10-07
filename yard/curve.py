@@ -189,7 +189,7 @@ class Curve(object):
         means no legend.
         """
         # Plot the points
-        xs, ys = zip(*self.points)
+        xs, ys = self.points
         curve = axes.plot(xs, ys, style)
 
         # Create the legend
@@ -215,7 +215,9 @@ class Curve(object):
     def points(self, points):
         """Sets the points of this curve. The method makes a copy of the
         given iterable."""
-        self._points = sorted(tuple(point) for point in points)
+        assert(len(points)==2)
+        assert(len(points[0])==len(points[1]))
+        self._points = points
 
     def resample(self, new_xs):
         """Resamples the curve in-place at the given X positions.
@@ -420,7 +422,7 @@ class ROCCurve(BinaryClassifierPerformanceCurve):
         and ``True`` also means a positive example. The dataset can also
         be an instance of `BinaryClassifierData`.
         """
-        super(ROCCurve, self).__init__(data, BinaryClassiferData.fpr,
+        super(ROCCurve, self).__init__(data, BinaryClassifierData.fpr,
             BinaryClassifierData.tpr)
 
     def auc(self):
